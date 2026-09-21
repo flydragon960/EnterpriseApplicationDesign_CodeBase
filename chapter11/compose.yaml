@@ -1,0 +1,27 @@
+# Listing 11.5 -- compose.yaml: the service AND its dependencies, declared.
+# Not for production orchestration (Kubernetes and its kin do that), but for
+# a reproducible local environment that mirrors production's SHAPE: the same
+# image, real Postgres, config by environment. "Works on my machine" becomes
+# "works in this declared environment", which anyone can recreate.
+services:
+  encore:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      ENCORE_DATABASE_URL: postgresql+psycopg2://encore:encore@db:5432/encore
+      ENCORE_PAYMENT_URL: http://payments:4000
+      ENCORE_LOG_LEVEL: info
+    depends_on:
+      db:
+        condition: service_healthy      # wait for db readiness, not just start
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: encore
+      POSTGRES_PASSWORD: encore
+      POSTGRES_DB: encore
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U encore"]
+      interval: 5s
+      retries: 5

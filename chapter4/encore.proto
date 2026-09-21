@@ -1,0 +1,27 @@
+// Listing 4.2 -- Encore's boundary as an RPC contract (Protocol Buffers).
+syntax = "proto3";
+package encore;
+
+service Encore {
+  // Safe: reading changes nothing.
+  rpc ListEvents (ListEventsRequest) returns (ListEventsReply);
+  rpc GetEvent (GetEventRequest) returns (Event);
+  // Server streaming: seatsLeft updates pushed as they change.
+  rpc WatchSeats (GetEventRequest) returns (stream SeatUpdate);
+}
+
+message ListEventsRequest { bool bookable = 1; }
+message ListEventsReply  { repeated Event events = 1; }
+message GetEventRequest  { string event_id = 1; }
+
+message Event {
+  string id = 1;
+  string title = 2;
+  // Point-in-time observation, not a promise.
+  int32 seats_left = 3;
+}
+
+message SeatUpdate {
+  string event_id = 1;
+  int32 seats_left = 2;
+}

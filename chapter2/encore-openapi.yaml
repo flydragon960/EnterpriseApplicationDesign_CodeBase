@@ -1,0 +1,99 @@
+openapi: 3.1.0
+info:
+  title: Encore
+  version: 1.0.0
+  description: >
+    Campus event ticketing. Organizers publish events; students find events
+    and reserve seats; doors staff verify reservations at entry.
+servers:
+  - url: http://localhost:3000
+    description: Local development
+
+paths:
+  /events:
+    get:
+      operationId: listEvents
+      summary: List events
+      description: >
+        Returns events, most imminent first. Safe: calling this changes
+        nothing, and callers (including caches and crawlers) may rely on that.
+      parameters:
+        - name: bookable
+          in: query
+          required: false
+          description: When true, return only events with seats remaining.
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: The list of events.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Event"
+
+  /events/{eventId}:
+    get:
+      operationId: getEvent
+      summary: Fetch one event
+      parameters:
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            $ref: "#/components/schemas/EventId"
+      responses:
+        "200":
+          description: The event.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Event"
+        "404":
+          description: No event has this id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+components:
+  schemas:
+    EventId:
+      type: string
+      pattern: "^ev_[0-9]+$"
+      examples: ["ev_101"]
+
+    Event:
+      type: object
+      required: [id, title, seatsLeft]
+      additionalProperties: false
+      properties:
+        id:
+          $ref: "#/components/schemas/EventId"
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        seatsLeft:
+          type: integer
+          minimum: 0
+          description: >
+            Seats not yet reserved. Zero means the event is full. This field
+            is a point-in-time observation, not a promise; it may be stale by
+            the time a reservation is attempted.
+
+    Error:
+      type: object
+      required: [error]
+      additionalProperties: false
+      properties:
+        error:
+          type: string
+          description: A stable, machine-readable error code, never prose.
+          examples: ["not_found"]
