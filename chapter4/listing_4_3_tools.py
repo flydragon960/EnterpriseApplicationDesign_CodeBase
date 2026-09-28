@@ -38,7 +38,7 @@ def tools_from_openapi(path):
     return tools
 
 if __name__ == "__main__":
-    tools = tools_from_openapi("../ch03/encore-openapi-v1.1.yaml")
+    tools = tools_from_openapi("./chapter3/encore-openapi-v1.1.yaml")
     out = json.dumps(tools, indent=2)
     open("encore-tools.json", "w").write(out)
     reserve = next(t for t in tools if t["name"] == "createReservation")
