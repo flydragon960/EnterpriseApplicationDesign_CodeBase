@@ -1,0 +1,61 @@
+# ---- Byte-compiled / optimized / caches ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ---- Virtual environments ----
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# ---- Distribution / packaging / build ----
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+wheels/
+pip-wheel-metadata/
+MANIFEST
+
+# ---- Test / coverage / type-check caches ----
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+*.cover
+.cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+
+# ---- Environment / secrets ----
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ---- Databases / logs (common in web services) ----
+*.sqlite3
+*.db
+*.log
+
+# ---- Notebooks ----
+.ipynb_checkpoints/
+
+# ---- Editors / IDEs ----
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ---- OS cruft ----
+.DS_Store
+Thumbs.db
