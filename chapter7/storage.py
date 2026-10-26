@@ -2,6 +2,8 @@
 # Same tables as Chapter 6 plus one column: events.version. Two new ways
 # to perform load-check-save: inside a locking transaction (pessimistic),
 # or with a conditional, version-checked write (optimistic).
+# The idempotency record is now written INSIDE the same transaction as
+# the booking, so a booking and its record commit together or not at all.
 import json
 from sqlalchemy import (create_engine, select, func, text,
                         String, Integer, Boolean, ForeignKey)
@@ -12,6 +14,10 @@ from domain import Event, Reservation
 class ConflictError(Exception):
     """The write's premise no longer holds: someone else changed the
     aggregate between our load and our save."""
+
+class DuplicateRequest(Exception):
+    """Another request with the same idempotency key committed first.
+    Our transaction is rolled back; the caller replays the winner's outcome."""
 
 class Base(DeclarativeBase):
     pass
@@ -60,6 +66,22 @@ def _write_back(session, event):
                                      status=r.status,
                                      created_at=r.created_at))
 
+# Claim an idempotency key and store the outcome, in the CALLER's
+# transaction. The primary key on idempotency.key does the arbitration:
+# if a concurrent request already inserted the same key, PostgreSQL makes
+# this INSERT wait until that transaction ends, then skips it (0 rows).
+_RECORD = text(
+    "INSERT INTO idempotency (key, request_hash, ok, code, value_json) "
+    "VALUES (:key, :h, :ok, :code, :v) "
+    "ON CONFLICT (key) DO NOTHING")
+
+def _record(session, key, request_hash, outcome):
+    inserted = session.execute(_RECORD, {
+        "key": key, "h": request_hash, "ok": outcome["ok"],
+        "code": outcome["code"], "v": json.dumps(outcome["value"])}).rowcount
+    if inserted == 0:
+        raise DuplicateRequest()           # someone else owns this key
+
 class EventRepository:
     def __init__(self, session_factory):
         self.sf = session_factory
@@ -100,7 +122,9 @@ class EventRepository:
             return (_to_domain(row), row.version) if row else (None, None)
 
     # ...and the save is conditional on it still being current.
-    def save_versioned(self, event, expected_version):
+    # The version claim, the reservation rows, and the idempotency record
+    # share ONE transaction: all three land, or none does.
+    def save_versioned(self, event, expected_version, idem=None):
         with self.sf() as s:
             claimed = s.execute(text(
                 "UPDATE events SET version = version + 1 "
@@ -110,7 +134,9 @@ class EventRepository:
                 s.rollback()
                 raise ConflictError()      # premise stale: someone won the race
             _write_back(s, event)
-            s.commit()
+            if idem is not None:
+                _record(s, *idem)          # may raise DuplicateRequest
+            s.commit()                     # (leaving 'with' uncommitted = rollback)
 
 class _UnitOfWork:
     """One database transaction, held open across load-check-save.
@@ -132,6 +158,14 @@ class _UnitOfWork:
 
     def save(self, event):
         _write_back(self.session, event)
+        # Every write to the aggregate bumps its version -- including this
+        # locked path -- so an optimistic writer elsewhere still notices.
+        self.session.execute(text(
+            "UPDATE events SET version = version + 1 WHERE id = :id"),
+            {"id": event.id})
+
+    def record_outcome(self, key, request_hash, outcome):
+        _record(self.session, key, request_hash, outcome)
 
     def __exit__(self, exc_type, *a):
         if exc_type is None:
@@ -154,9 +188,10 @@ class IdempotencyStore:
             return row.request_hash, {"ok": row.ok, "code": row.code,
                                       "value": value}
 
-    def put(self, key, request_hash, outcome):
+    def record(self, key, request_hash, outcome):
+        """Store an outcome in its own transaction (for outcomes that did
+        not write to an aggregate, e.g. sold_out). Raises DuplicateRequest
+        if the key is already taken."""
         with self.sf() as s:
-            s.merge(IdempotencyRow(key=key, request_hash=request_hash,
-                                   ok=outcome["ok"], code=outcome["code"],
-                                   value_json=json.dumps(outcome["value"])))
+            _record(s, key, request_hash, outcome)
             s.commit()

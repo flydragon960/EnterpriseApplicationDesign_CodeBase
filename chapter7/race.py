@@ -36,7 +36,7 @@ def run(discipline):
     for student, out in results:
         detail = out.value["id"] if out.ok else out.code
         retries = f"  (retries={out.retries})" if out.retries else ""
-        print(f"  {student}: {'201' if out.ok else '409'} {detail}{retries}")
+        print(f"  {student}: {out.http_status} {detail}{retries}")
     seats = service.get_event("ev_103")["seatsLeft"]
     print(f"  capacity 2 -> confirmed {sum(1 for _, o in results if o.ok)}, "
           f"seatsLeft {seats}, elapsed {elapsed:.1f}s")
