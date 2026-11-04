@@ -70,6 +70,8 @@ print("   payload edited, old sig   :", check_by_hand(tampered))
 print()
 
 # --- Step 5: a real library agrees with our hand-made token ---------------
+# PyJWT takes keys as PEM bytes, the text format starting with -----BEGIN ... KEY-----. 
+# These two lines convert our in-memory key objects to that format.
 public_pem = public_key.public_bytes(serialization.Encoding.PEM,
                                      serialization.PublicFormat.SubjectPublicKeyInfo)
 private_pem = private_key.private_bytes(serialization.Encoding.PEM,

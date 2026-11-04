@@ -1,6 +1,6 @@
 # Chapter 8 Demo — Authentication, Authorization, and Delegation
 
-This demo has five Python files. Together they show everything in Chapter 8, starting from the basics: how a private and public key work, what a JWT is made of, then issuing and checking tokens, three attacks on careless verifiers, scopes at the door, and an agent booking a seat on someone's behalf.
+This demo has six Python files. Together they show everything in Chapter 8, starting from the basics: how a private and public key work, what a JWT is made of, then issuing and checking tokens, three attacks on careless verifiers, scopes at the door, and an agent booking a seat on someone's behalf.
 
 | File | Listing | What it does |
 |---|---|---|
@@ -9,6 +9,7 @@ This demo has five Python files. Together they show everything in Chapter 8, sta
 | `auth.py` | 8.3 | Issues tokens (`issue`) and verifies them correctly (`verify`). Also keeps two **wrong** verifiers so the attacks can be shown. |
 | `app.py` | 8.4 | A small Encore API (Flask) guarded by two decorators: `authenticated()` (who are you?) and `requires_scope()` (what may you do?). |
 | `attacks.py` | 8.5 | Runs three forged tokens against a naive verifier and against the honest `verify()`. |
+| `client.py` | 8.6 | Calls the API **the right way**: renews tokens before they expire, retries once on 401, stops on 403, sets a timeout, never prints a whole token. |
 
 The demo has three parts. **Part 0** (the basics) and **Part 1** (the attacks) each run in a single terminal and need no server. **Part 2** uses two terminals: one runs the server, and the other sends requests with `curl`.
 
@@ -21,7 +22,7 @@ Requires Python 3.9 or newer.
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install flask pyjwt cryptography
+pip install flask pyjwt cryptography requests
 ```
 
 The first time `auth.py` is imported, it creates an RSA key pair and saves it as `/tmp/encore_priv.pem` and `/tmp/encore_pub.pem`. Every process (the server, the attack script, and the token-minting commands) reads the same key files. That is how they all trust the same issuer. In production, this shared file would be a published JWKS endpoint.
@@ -268,6 +269,49 @@ curl -s -w " %{http_code}\n" -H "Authorization: Bearer $EXP" $B/events
 
 A fourth extra, for Exercise 8.3: stop the server, delete `/tmp/encore_*.pem`, then restart the server and run `curl` with an old token. The token is rejected with `InvalidSignatureError` because the key has rotated. Mint new tokens to continue.
 
+### 4.6 The right way to call the API: `client.py`
+
+`curl` shows the raw protocol. `client.py` shows what a real client must add. Keep the server running in Terminal 1, then in Terminal 2:
+
+```bash
+python3 client.py
+```
+
+Expected output:
+
+```
+1. Normal calls
+reader  GET  /events                       200  OK  events: Jazz Ensemble, Improv Night
+booker  POST reservation ev_101            201  OK  reservedBy student:kim, onBehalfOf student:kim
+
+2. Errors handled, not retried blindly
+reader  POST reservation ev_101            403  FORBIDDEN -- need 'reservations:write'; ask for more permission, do not retry
+booker  POST reservation ev_102            409  SOLD OUT -- a domain rule, not an auth problem
+booker  POST reservation ev_999            404  NOT FOUND -- check the event id
+
+3. Delegation: the agent books for kim
+agent   POST reservation ev_101            201  OK  reservedBy agent:calendar-bot, onBehalfOf student:kim
+agent   GET  /events                       403  FORBIDDEN -- need 'events:read'; ask for more permission, do not retry
+
+4. Token expires while held -> 401 -> renew -> retry once
+   (401 ExpiredSignatureError -> getting a new token, retrying once)
+reader  GET  /events (stale token)         200  OK  events: Jazz Ensemble, Improv Night
+   token used first : ...MVBGFFCA
+   token used after : ...4auA_c8w (renewed)
+```
+
+**What to point out**
+
+- **`TokenSource`** holds a token and renews it 30 seconds *before* `exp`. The client reads `exp` without checking the signature, which is fine: it uses `exp` only to decide when to renew. The *server* is the one that verifies.
+- **`EncoreClient.call()`** sends the token only in the `Authorization` header, with a 5-second timeout, and reuses one connection (`requests.Session`).
+- **401 → renew and retry once.** The token may have expired or the key may have rotated. A second 401 means a real problem, so it stops instead of looping.
+- **403 → stop.** Retrying with the same token cannot help; the caller needs more permission. Compare the two lines in part 2 and part 4: the codes from section 4.3 now drive different behaviour.
+- **409 and 404** are domain answers, not auth problems.
+- **`masked()`** prints only the last 8 characters. Tokens are bearer credentials: anyone who copies one from a log can use it until it expires.
+- In production, `API` must be `https://`. Over plain HTTP, anyone on the network can read the token.
+
+If the server isn't running, the script prints `Cannot reach http://localhost:3000 -- start the server first`.
+
 ---
 
 ## 5. Resetting and troubleshooting
@@ -285,7 +329,7 @@ Every reservation receipt returns the id `res_1`. That is a simplification in th
 
 ---
 
-## 6. Suggested running order (about 25 minutes)
+## 6. Suggested running order (about 30 minutes)
 
 1. `python3 keys_demo.py`: private and public keys (5 min)
 2. `python3 jwt_demo.py`: a JWT by hand (5 min)
@@ -294,3 +338,4 @@ Every reservation receipt returns the id `res_1`. That is a simplification in th
 5. Demo 4, requests #1–#4 (4 min)
 6. Demo 5, requests #5–#6 (3 min)
 7. Optional extras #7–#9 if time allows (1 min)
+8. `python3 client.py`: the right way to call the API (4 min)
