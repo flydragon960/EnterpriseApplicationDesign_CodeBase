@@ -1,0 +1,28 @@
+{
+  "events": {
+    "ev_103": {
+      "title": "Film Society",
+      "capacity": 2
+    }
+  },
+  "reservations": {
+    "res_4dcc7c": {
+      "event_id": "ev_103",
+      "status": "confirmed",
+      "created_at": "2026-11-16T15:56:26.547697+00:00",
+      "hold_expires_at": "2026-11-16T16:11:26.547712+00:00"
+    }
+  },
+  "outbox": [
+    {
+      "id": 1,
+      "kind": "charge",
+      "reservation_id": "res_4dcc7c",
+      "amount": 1500,
+      "charge_id": "ch_1",
+      "status": "done",
+      "attempts": 0
+    }
+  ],
+  "next_outbox_id": 2
+}
